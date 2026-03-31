@@ -366,7 +366,7 @@
     }
 
     // Simulate submission
-    btn.textContent = '⏳ Sending...';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><use href="#icon-clock"/></svg> Sending...';
     btn.disabled = true;
 
     setTimeout(() => {
@@ -380,7 +380,7 @@
         form.reset();
         success.classList.remove('show');
         formFields.forEach(el => { el.style.display = ''; });
-        btn.textContent = '🍽️ Reserve My Table';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><use href="#icon-utensils"/></svg> Reserve My Table';
         btn.disabled = false;
       }, 8000);
 
@@ -421,25 +421,196 @@
 
 
 /* ============================================================
-   8. ORDER BUTTONS – WhatsApp redirect
+   8. CART SYSTEM & ORDERING
 ============================================================ */
-(function initOrderButtons() {
-  const orderBtns = document.querySelectorAll('.order-btn');
-  const WA_NUMBER = '237670000000';
+(function initCartSystem() {
+  const cartBtns    = document.querySelectorAll('.order-btn, .special-cart-btn');
+  const cartOverlay = document.getElementById('cart-overlay');
+  const cartSidebar = document.getElementById('cart-sidebar');
+  const navCartBtn  = document.getElementById('cart-toggle-btn');
+  const closeCart   = document.getElementById('cart-close');
+  const cartList    = document.getElementById('cart-items-list');
+  const cartTotal   = document.getElementById('cart-total-val');
+  const cartCount   = document.getElementById('cart-count-label');
+  const navBadge    = document.getElementById('cart-badge');
+  const cartEmpty   = document.getElementById('cart-empty');
+  const clearCart   = document.getElementById('cart-clear');
+  const placeOrder  = document.getElementById('cart-place-order');
 
-  orderBtns.forEach(btn => {
+  const WA_NUMBER = '237676494888';
+  let cart = [];
+
+  // --- Toggle Cart ---
+  function openCart() {
+    cartSidebar.classList.add('open');
+    cartOverlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function hideCart() {
+    cartSidebar.classList.remove('open');
+    cartOverlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  if (navCartBtn) navCartBtn.addEventListener('click', openCart);
+  if (closeCart) closeCart.addEventListener('click', hideCart);
+  if (cartOverlay) cartOverlay.addEventListener('click', hideCart);
+
+  // --- Update UI ---
+  function updateCartUI() {
+    if (cart.length === 0) {
+      cartEmpty.style.display = 'flex';
+      cartList.style.display = 'none';
+      cartTotal.textContent = '0 FCFA';
+      cartCount.textContent = '0 items';
+      if (navBadge) navBadge.textContent = '0';
+      return;
+    }
+
+    cartEmpty.style.display = 'none';
+    cartList.style.display = 'grid';
+    
+    let total = 0;
+    let qtyCount = 0;
+    cartList.innerHTML = '';
+    
+    cart.forEach((item, index) => {
+      total += item.price * item.qty;
+      qtyCount += item.qty;
+
+      const li = document.createElement('li');
+      li.className = 'cart-item';
+      li.innerHTML = `
+        <div class="cart-item-info">
+          <div class="cart-item-title">${item.title}</div>
+          <div class="cart-item-price">${item.price.toLocaleString()} FCFA</div>
+        </div>
+        <div class="cart-item-controls">
+          <button class="cart-item-btn cart-minus" data-idx="${index}">–</button>
+          <span class="cart-item-qty">${item.qty}</span>
+          <button class="cart-item-btn cart-plus" data-idx="${index}">+</button>
+        </div>
+      `;
+      cartList.appendChild(li);
+    });
+
+    cartTotal.textContent = total.toLocaleString() + ' FCFA';
+    cartCount.textContent = `${qtyCount} item${qtyCount !== 1 ? 's' : ''}`;
+    if (navBadge) navBadge.textContent = qtyCount;
+
+    // Attach listeners to + / -
+    document.querySelectorAll('.cart-minus').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-idx');
+        if (cart[idx].qty > 1) { cart[idx].qty--; } 
+        else { cart.splice(idx, 1); }
+        updateCartUI();
+      });
+    });
+    document.querySelectorAll('.cart-plus').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-idx');
+        cart[idx].qty++;
+        updateCartUI();
+      });
+    });
+  }
+
+  // --- Add to Cart ---
+  cartBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      // Find parent card and get item name + price
-      const card  = btn.closest('.menu-card');
-      const title = card ? card.querySelector('h3')?.textContent?.trim() : 'an item';
-      const price = card ? card.querySelector('.price')?.textContent?.trim() : '';
+      const card = btn.closest('.menu-card, .special-card');
+      if (!card) return;
 
-      const message = encodeURIComponent(
-        `Hello I Grill House! 👋\nI'd like to order: *${title}* (${price})\nCould you please confirm availability? Thank you!`
-      );
-      window.open(`https://wa.me/${WA_NUMBER}?text=${message}`, '_blank', 'noopener,noreferrer');
+      let title = '';
+      let priceText = '';
+
+      if (btn.classList.contains('special-cart-btn')) {
+        title = card.querySelector('.special-name')?.textContent?.trim() || "Today's Special";
+        priceText = card.querySelector('.special-price')?.textContent?.trim() || '0 FCFA';
+      } else {
+        title = card.querySelector('h3')?.textContent?.trim() || 'Menu Item';
+        priceText = card.querySelector('.price')?.textContent?.trim() || '0 FCFA';
+      }
+
+      // Parse price gracefully
+      const priceNum = parseInt(priceText.replace(/[^0-9]/g, ''), 10) || 0;
+
+      // Check if exists
+      const existing = cart.find(i => i.title === title);
+      if (existing) {
+        existing.qty++;
+      } else {
+        cart.push({ title, price: priceNum, qty: 1 });
+      }
+
+      updateCartUI();
+      openCart();
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align:middle;margin-right:4px"><use href="#icon-check"/></svg> Added';
+      setTimeout(() => {
+        btn.innerHTML = btn.classList.contains('special-cart-btn') ? 'Add to Cart' : 'Add to Cart';
+      }, 2000);
     });
   });
+
+  // --- Clear Cart ---
+  if (clearCart) {
+    clearCart.addEventListener('click', () => {
+      cart = [];
+      updateCartUI();
+    });
+  }
+
+  // --- Checkout via WhatsApp ---
+  if (placeOrder) {
+    placeOrder.addEventListener('click', () => {
+      if (cart.length === 0) return;
+
+      let orderText = "Hello *I Grill House*!\nI would like to place an order for delivery/pickup:\n\n";
+      let total = 0;
+
+      cart.forEach((item, i) => {
+        const lineTotal = item.price * item.qty;
+        total += lineTotal;
+        orderText += `*${i+1}. ${item.title}*\n   ${item.qty} x ${item.price.toLocaleString()} = ${lineTotal.toLocaleString()} FCFA\n`;
+      });
+
+      orderText += `\n*TOTAL: ${total.toLocaleString()} FCFA*\n\n`;
+      orderText += "Please let me know how to proceed with payment and delivery details. Thanks!";
+
+      const encodedURL = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(orderText)}`;
+      window.open(encodedURL, '_blank', 'noopener,noreferrer');
+    });
+  }
+})();
+
+/* ============================================================
+   8.5. TODAY'S SPECIAL TIMER
+============================================================ */
+(function initSpecialTimer() {
+  const displays = document.querySelectorAll('.timer-display');
+  if (!displays.length) return;
+
+  function updateTimer() {
+    const now = new Date();
+    // Midnight tonight local time
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+    const diff = midnight - now;
+
+    if (diff <= 0) {
+      displays.forEach(d => d.textContent = "00h 00m 00s");
+      return;
+    }
+
+    const h = Math.floor((diff / (1000 * 60 * 60)) % 24).toString().padStart(2, '0');
+    const m = Math.floor((diff / (1000 * 60)) % 60).toString().padStart(2, '0');
+    const s = Math.floor((diff / 1000) % 60).toString().padStart(2, '0');
+
+    displays.forEach(d => d.textContent = `${h}h ${m}m ${s}s`);
+  }
+
+  updateTimer();
+  setInterval(updateTimer, 1000);
 })();
 
 
